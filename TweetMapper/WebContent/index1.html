@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Websocket example</title>
+<style>
+      html, body, #map-canvas {
+        height: 90%;
+        margin: 0px;
+        padding: 0px
+      }
+      #panel {
+        position: absolute;
+        top: 5px;
+        left: 50%;
+        margin-left: -180px;
+        z-index: 5;
+        background-color: #fff;
+        padding: 5px;
+        border: 1px solid #999;
+      }
+    </style>
+</head>
+<body>
+	<div>
+		<input type="text" id="messageinput"/>
+	</div>
+	<div>
+		<button type="button" onclick="openSocket();">Open</button>
+		<button type="button" onclick="sendMessage();">Send message</button>
+		<button type="button" onclick="closeSocket();">Close</button>
+	</div>
+	<div id="messages"></div>
+	<div id="map-canvas"></div>
+	<script src="https://maps.googleapis.com/maps/api/js?v=3.exp&signed_in=true&libraries=visualization"></script>
+	<script type="text/javascript">
+		var websocket;
+		var pointArray;
+		var messages = document.getElementById("messages");
+		
+		
+		function openSocket() {
+			if(websocket !== undefined && websocket.readyState !== WebSocket.CLOSED) {
+				console.log("Websocket is already open");
+				return;
+			}
+			
+			websocket = new WebSocket("ws://TweetMapperEnv-xjwpgg9wsb.elasticbeanstalk.com:8080/TweetMapper/tweetmapper");
+			//:8080/TweetMapper
+			//websocket = new WebSocket("ws://echo.websocket.org");
+			
+			websocket.onopen = function(event) {
+				if (event.data === undefined)
+					return;
+				
+				console.log(event.data);
+			};
+			
+			websocket.onmessage = function(event) {
+				var text = event.data;
+				//writeResponse(event.data);
+				var json = JSON.parse(text);
+				console.log(json);
+				
+				var tweets = json.tweet;
+				var tweetData = [];
+				for (var i in tweets) {
+					var lat = tweets[i].latitude;
+					var lon = tweets[i].longitude;
+					tweetData[i] = new google.maps.LatLng(lat, lon);	
+				}
+				
+				if(pointArray === undefined) {
+					pointArray = new google.maps.MVCArray(tweetData);
+					var mapOptions = {
+						    zoom: 2,
+						    center: new google.maps.LatLng(21.774546, -89.649),
+						    mapTypeId: google.maps.MapTypeId.SATELLITE
+						  };
+					
+					map = new google.maps.Map(document.getElementById('map-canvas'),
+						      mapOptions);
+					
+					var heatmap = new google.maps.visualization.HeatmapLayer({
+					    data: pointArray
+					  });
+
+					heatmap.setMap(map);
+				}
+				else {
+					for (var i in tweetData) {
+						pointArray.push(tweetData[i])
+					}
+				}
+				
+				
+				
+				//pointArray.push(new LatLng(<coordinates>));
+
+			};
+			
+			websocket.onclose = function(event) {
+				writeResponse("Connection closed");
+			};
+		}
+		
+		function sendMessage() {
+			var text = document.getElementById("messageinput").value;
+			websocket.send(text);
+		}
+		
+		function closeSocket() {
+			websocket.close();
+		}
+		
+		function writeResponse(text) {
+			messages.innerHTML += "<br/>" + text;
+		}
+	
+	
+	</script>
+	
+</body>
+</html>

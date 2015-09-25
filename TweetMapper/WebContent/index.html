@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>Websocket example</title>
+<style>
+      html, body, #map-canvas {
+        height: 100%;
+        top: 30px;
+        margin: 0px;
+        padding: 0px
+      }
+      #panel {
+        position: absolute;
+        top: 40px;
+        left: 50%;
+        margin-left: -180px;
+        z-index: 5;
+        background-color: #fff;
+        padding: 0px;
+        border: 1px solid #999;
+      }
+      #search_div {
+      	height: 25px;
+      	margin-left: 25%;
+      }
+      #submit_button {
+      	height: 20px;
+      	/*margin-top: 5px;*/
+	}
+    </style>
+	<link rel="stylesheet" type="text/css" href="/js/jquery.tokenize.css" />
+</head>
+<body onload="init()">
+	<script type="text/javascript" src="jquery-2.1.3.min.js"></script>
+	<script type="text/javascript" src="jquery.tokenize.js"></script>
+	<div id="panel">
+      <button onclick="toggleHeatmap()">Toggle Heatmap</button>
+      <button onclick="changeGradient()">Change gradient</button>
+      <button onclick="changeRadius()">Change radius</button>
+      <button onclick="changeOpacity()">Change opacity</button>
+    </div>
+	<!--<div>
+		<input type="text" id="messageinput"/>
+	</div>
+	  <div>
+		<button type="button" onclick="openSocket();">Open</button>
+		<button type="button" onclick="sendMessage();">Send message</button>
+		<button type="button" onclick="closeSocket();">Close</button>
+	</div>  -->
+	<div id="search_div">
+		<select name="tags" id="tag_select" onchange="setTag(this)" multiple="multiple" class="tokenize-sample"
+		onAddToken="setTag(this, text)">
+			<option value="all">all</option>
+			<option value="music">music</option>
+			<option value="friends">friend</option>
+			<option value="nyc">nyc</option>
+			<option value="love">love</option>
+			<option value="apple">apple</option>
+			<option value="samsung">samsung</option>
+			<option value="party">party</option>
+			<option value="holiday">holiday</option>
+		</select>
+		<button id="submit_button">Submit</button>
+		<script type="text/javascript">
+   			 $('#tag_select').tokenize();
+		</script>
+	</div>
+	<div id="messages"></div>
+	<div id="map-canvas"></div>
+	<script src="https://maps.googleapis.com/maps/api/js?v=3.exp&signed_in=true&libraries=visualization"></script>
+	<script type="text/javascript">
+		var websocket;
+		var pointArray;
+	    geocoder = new google.maps.Geocoder();
+	    var infowindow = new google.maps.InfoWindow();
+		//var markerArray = new google.maps.MVCArray();
+		var markerArray = [];
+		var messages = document.getElementById("messages");
+		var xmlhttp;
+		var tag = 'all';
+		var lastRead = 0;
+		var tweetWeight = 0;
+		var firstLoad = false;
+		var heatmap;
+		
+		
+		function toggleHeatmap() {
+				if(heatmap !== 'undefined')
+			  		heatmap.setMap(heatmap.getMap() ? null : map);
+			}
+
+			function changeGradient() {
+			  var gradient = [
+			    'rgba(0, 255, 255, 0)',
+			    'rgba(0, 255, 255, 1)',
+			    'rgba(0, 191, 255, 1)',
+			    'rgba(0, 127, 255, 1)',
+			    'rgba(0, 63, 255, 1)',
+			    'rgba(0, 0, 255, 1)',
+			    'rgba(0, 0, 223, 1)',
+			    'rgba(0, 0, 191, 1)',
+			    'rgba(0, 0, 159, 1)',
+			    'rgba(0, 0, 127, 1)',
+			    'rgba(63, 0, 91, 1)',
+			    'rgba(127, 0, 63, 1)',
+			    'rgba(191, 0, 31, 1)',
+			    'rgba(255, 0, 0, 1)'
+			  ]
+			  if(heatmap !== 'undefined')
+			 	 heatmap.set('gradient', heatmap.get('gradient') ? null : gradient);
+			}
+
+			function changeRadius() {
+				if(heatmap !== 'undefined')
+			  		heatmap.set('radius', heatmap.get('radius') ? null : 20);
+			}
+
+			function changeOpacity() {
+				if (heatmap !== 'undefined')
+			 		heatmap.set('opacity', heatmap.get('opacity') ? null : 0.2);
+			}
+		
+		
+		function setTag(sel) {
+			window.clearInterval("openSocket()");
+			tag = sel.value;
+			
+			lastRead = 0;
+			firstLoad = true;
+			openSocket();
+			window.setInterval("openSocket()", 15000);
+		}
+
+		
+		function setTag(sel, text) {
+			window.clearInterval("openSocket()");
+			tag = sel.value;
+			
+			lastRead = 0;
+			firstLoad = true;
+			openSocket();
+			window.setInterval("openSocket()", 15000);
+		}
+		
+		function init() {
+				window.setInterval("openSocket()", 15000);
+				//window.setTimeout("openSocket()", 1);
+		}
+		
+		function openSocket() {
+			xmlhttp = new XMLHttpRequest();
+			//var url = "http://TweetMapperEnv-9pqwvwzcdp.elasticbeanstalk.com/rest/tweetservice/" + tag + ":" + lastRead;
+			var url = "http://" + document.domain + "/rest/tweetservice/" + tag + ":" + lastRead;
+			//var url = "http://localhost:8080/TweetMapper/rest/tweetservice/" + tag + ":" + lastRead;
+			xmlhttp.open('GET', url, true);
+			xmlhttp.send(null);
+			xmlhttp.onreadystatechange = function() {
+
+		       if (xmlhttp.readyState == 4) {
+		          if ( xmlhttp.status == 200) {
+		        	  
+		        	if (firstLoad && pointArray !== undefined) {
+		        		pointArray.clear();
+		        		for (var i = 0; i < markerArray.length; i++) {
+		        			if (markerArray[i] != null) {
+		        				markerArray[i].setMap(null);
+		        			    markerArray[i] = null;
+		        			}
+	        			  }
+						markerArray = [];
+		        		firstLoad = false;
+		        	}  
+		       	   	//console.log(xmlhttp.responseText);
+		       	   	try {
+		       	   		var json = JSON.parse(xmlhttp.responseText);
+		       	   	} catch(e) {
+		       	   		console.log(e);
+		       	   		console.log(xmlhttp.responseText);
+		       	   	}
+		       		
+					
+				
+					var tweets = json.tweet;
+					var tweetData = [];
+					for (var i in tweets) {
+						var lat = tweets[i].latitude;
+						var lon = tweets[i].longitude;
+						var id = tweets[i].id;
+						var latLng = new google.maps.LatLng(lat, lon);
+						var weightedLoc = {
+							location: latLng,
+							weight: Math.pow(4, tweetWeight),
+							//weight: tweetWeight,
+							fresh: true,
+							username: tweets[i].username,
+							content: tweets[i].content
+						};
+						//tweetData[i] = new google.maps.LatLng(lat, lon);
+						tweetData[i] = weightedLoc;
+						lastRead = id;
+					}
+					//var exp = Math.pow(4, tweetWeight);
+					//console.log(exp);
+					tweetWeight += 1;
+					if(pointArray === undefined) {
+						pointArray = new google.maps.MVCArray(tweetData);
+						var mapOptions = {
+							    zoom: 3,
+							    center: new google.maps.LatLng(21.774546, -89.649),
+							    mapTypeId: google.maps.MapTypeId.SATELLITE
+							  };
+						
+						map = new google.maps.Map(document.getElementById('map-canvas'),
+							      mapOptions);
+						
+						heatmap = new google.maps.visualization.HeatmapLayer({
+						    data: pointArray
+						  });
+	
+						heatmap.setMap(map);
+						//markerArray = new google.maps.MVCArray();
+						markerArray = [];
+						createMarker(tweetData);
+						/*for(var i in tweetData) {
+							var marker = new google.maps.Marker({
+								position: tweetData[i].location,
+								map: map
+							});
+							attachClickListener(marker);
+							google.maps.event.addListener(marker, 'dblclick', function() {
+								map.setZoom(2);
+								center: new google.maps.LatLng(21.774546, -89.649);
+							});
+							markerArray[i] = marker;
+						}*/
+					}
+					else {
+						for (var i = 0; i < markerArray.length; i++) {
+							if(markerArray[i] != null) {
+								markerArray[i].setMap(null);
+		        			    markerArray[i] = null;
+							} 
+	        			  }
+						markerArray = [];
+						
+						for(var i in tweetData) {
+							pointArray.push(tweetData[i]);
+							/*var marker = new google.maps.Marker({
+								position: tweetData[i].location,
+								map: map
+							});
+							attachClickListener(marker);
+							google.maps.event.addListener(marker, 'dblclick', function() {
+								map.setZoom(2);
+								center: new google.maps.LatLng(21.774546, -89.649);
+							});
+							markerArray.push(marker);*/
+						}
+						createMarker(tweetData);
+					}
+		         }
+		          else if (xmlhttp.status == 204) {
+		        	  console.log('no new data found');
+	        		  
+		        	  if (firstLoad) {
+		        		  pointArray.clear();
+		        		  for (var i = 0; i < markerArray.length; i++) {
+		        			  if(markerArray[i] != null) {
+		        			    markerArray[i].setMap(null);
+		        			    markerArray[i] = null;
+		        			  }
+		        			}
+		        		  markerArray = [];
+		        		  firstLoad = false;
+		        	  }
+		          }
+		         else {
+		               alert("Error ->" + xmlhttp.responseText);
+		          	   window.clearInterval("openSocket()");
+		         }
+		      }
+		       //./mysql -h clouddbinstance.ci8zhgzbiolo.us-east-1.rds.amazonaws.com -P 3306 -u tweetmap -p tweetdatabase
+		 	};
+		}
+		
+		function createMarker(tweetData) {
+			for(var i in tweetData) {
+				var marker = new google.maps.Marker({
+					position: tweetData[i].location,
+					map: map
+				});
+				attachClickListener(marker, tweetData[i]);
+				/*google.maps.event.addListener(marker, 'dblclick', function() {
+					map.setZoom(2);
+					center: new google.maps.LatLng(21.774546, -89.649);
+				});*/
+				markerArray[i] = marker;
+			}
+		}
+
+		function attachClickListener(marker, tweet) {
+			var latLng = marker.position;
+			var username = tweet.username;
+			var content = tweet.content;
+			var infoWindow = new google.maps.InfoWindow();
+			
+			google.maps.event.addListener(marker, 'click', function() {
+				 geocoder.geocode({'latLng': latLng}, function(results, status) {
+				      if (status == google.maps.GeocoderStatus.OK) {
+				      	if (results[1]) {
+				        	infowindow.setContent(username + " says " + content+" at " + results[1].formatted_address);
+				          	infowindow.open(map, marker);
+				        }
+				      } else {
+				        alert("Geocoder failed due to: " + status);
+				      }
+				    });
+			});
+		}
+	</script>	
+</body>
+</html>
